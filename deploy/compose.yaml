@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  java-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.java
+    container_name: llm-java-service
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - LLAMA_SERVER_URL=http://llama-server:11434
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - llm-network
+    depends_on:
+      llama-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  llama-server:
+    image: ollama/ollama:latest
+    container_name: llm-server
+    ports:
+      - "11434:11434"
+    volumes:
+      - llama-models:/root/.ollama
+    networks:
+      - llm-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        sleep 10
+        ollama pull llama3.2:3b
+        ollama run llama3.2:3b &
+        tail -f /dev/null
+
+networks:
+  llm-network:
+    name: llm-network
+    driver: bridge
+
+volumes:
+  llama-models:
+    name: llama-models

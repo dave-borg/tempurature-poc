@@ -20,8 +20,8 @@
     </appender>
 
     <!-- Specific logger configurations -->
-    <logger name="com.yourcompany.llmservice" level="DEBUG"/>
-    <logger name="org.springframework.web" level="INFO"/>
+    <!-- <logger name="com.myfr.llm.functions.tempurature_poc" level="INFO"/>
+    <logger name="org.springframework.web" level="INFO"/> -->
 
     <!-- Root logger configuration -->
     <root level="INFO">

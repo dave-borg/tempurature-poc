@@ -1,0 +1,148 @@
+---
+- name: Build Java Application Locally
+  hosts: localhost
+  connection: local
+  vars:
+    project_root: "{{ playbook_dir }}/.."
+    jar_file: "tempurature-poc-0.0.2.jar"
+    docker_svr: "192.168.128.142"
+  tasks:
+    - name: Build Java application with Maven locally
+      command: mvn clean package -DskipTests
+      args:
+        chdir: "{{ project_root }}"
+      register: build_result
+
+    - name: Verify JAR file exists
+      stat:
+        path: "{{ project_root }}/target/{{ jar_file }}"
+      register: jar_file_check
+
+    - name: Fail if JAR file not found
+      fail:
+        msg: "JAR file not found in target directory after build"
+      when: not jar_file_check.stat.exists
+
+- name: Deploy LLM Data Service
+  hosts: mariette
+  become: true
+  vars:
+    local_project_root: "{{ playbook_dir }}/.."
+    remote_project_dir: "/opt/llm-service"
+    docker_compose_dir: "{{ remote_project_dir }}/deploy"
+    jar_file: "tempurature-poc-0.0.2.jar"
+
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+        state: present
+        update_cache: yes
+
+    - name: Create project directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      with_items:
+        - "{{ remote_project_dir }}"
+        - "{{ remote_project_dir }}/target"
+        - "{{ remote_project_dir }}/logs"
+        - "{{ docker_compose_dir }}"
+
+    - name: Copy JAR file to remote server
+      copy:
+        src: "{{ local_project_root }}/target/{{ jar_file }}"
+        dest: "{{ remote_project_dir }}/target/{{ jar_file }}"
+        mode: '0644'
+
+    - name: Copy Dockerfile to remote server
+      copy:
+        src: "{{ local_project_root }}/deploy/Dockerfile.java"
+        dest: "{{ remote_project_dir }}/Dockerfile.java"
+        mode: '0644'
+
+    - name: Copy docker-compose.yml to remote server
+      copy:
+        src: "{{ local_project_root }}/deploy/compose.yaml"
+        dest: "{{ remote_project_dir }}/docker-compose.yaml"
+        mode: '0644'
+
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create Docker network
+      docker_network:
+        name: llm-network
+        state: present
+
+    - name: Pull Ollama image
+      docker_image:
+        name: ollama/ollama
+        source: pull
+        force_source: yes
+
+    - name: Build Java service Docker image
+      docker_image:
+        build:
+          path: "{{ remote_project_dir }}"
+          dockerfile: Dockerfile.java
+        name: llm-java-service
+        source: build
+        force_source: yes
+
+    - name: Install Docker Compose V2
+      block:
+        - name: Create Docker CLI plugins directory
+          file:
+            path: ~/.docker/cli-plugins
+            state: directory
+            mode: '0755'
+
+        - name: Create Docker system plugins directory
+          file:
+            path: /usr/local/lib/docker/cli-plugins
+            state: directory
+            mode: '0755'
+          become: true
+
+        - name: Download Docker Compose V2
+          get_url:
+            url: https://github.com/docker/compose/releases/download/v2.30.3/docker-compose-linux-x86_64
+            dest: ~/.docker/cli-plugins/docker-compose
+            mode: '0755'
+
+        - name: Create symlink for Docker Compose
+          become: true
+          file:
+            src: ~/.docker/cli-plugins/docker-compose
+            dest: /usr/local/lib/docker/cli-plugins/docker-compose
+            state: link
+            force: yes
+
+    - name: Start Docker services using docker compose
+      ansible.builtin.command:
+        cmd: docker-compose -f /opt/llm-service/docker-compose.yaml up -d
+        chdir: /opt/llm-service/deploy
+      become: true
+
+    - name: Wait for services to be healthy
+      uri:
+        url: "http://192.168.128.142:8081/actuator/health"
+        method: GET
+      register: health_check
+      until: health_check.status == 200
+      retries: 12
+      delay: 10
+
+    - name: Display deployment completion message
+      debug:
+        msg: 
+          - "LLM Data Service deployment completed successfully"
+          - "Java service is available at http://192.168.128.142:8081"
+          - "Llama server is available at http://192.168.128.142:8080"

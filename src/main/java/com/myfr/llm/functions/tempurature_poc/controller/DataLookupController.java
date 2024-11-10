@@ -13,6 +13,7 @@ import java.util.UUID;
 import java.util.HashMap;
 import java.time.LocalDateTime;
 
+@RestController
 @RequestMapping("/api/data")
 public class DataLookupController {
     private static final Logger log = LoggerFactory.getLogger(DataLookupController.class);
@@ -22,7 +23,7 @@ public class DataLookupController {
     public ResponseEntity<Map<String, Object>> lookupData(
             @PathVariable String query,
             @RequestHeader(value = "X-Request-ID", required = false) String requestId) {
-
+        System.out.println("Test!!!");
         // Generate request ID if not provided
         String trackingId = requestId != null ? requestId : UUID.randomUUID().toString().substring(0, 8);
 

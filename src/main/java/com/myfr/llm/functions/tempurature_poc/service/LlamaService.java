@@ -40,10 +40,13 @@ public class LlamaService {
             1. Make the appropriate HTTP GET request
             2. Include the data in your response
             3. Always specify the timestamp of the data
+            4. Just give me a concise response, I don't need an explaination of how you're retreiving the data.
 
             Example:
             To get temperature: GET http://java-service:8081/api/data/lookup/temperature
             Response format: {"timestamp": "2024-11-09T10:30:00", "query": "temperature", "value": 22.5}
+
+            To get temperature: GET http://java-service:8081/api/data/lookup/stock
 
             Remember to interpret and explain the data in your responses.
             """;
